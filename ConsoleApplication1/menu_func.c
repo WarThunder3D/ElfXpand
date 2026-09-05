@@ -1,5 +1,6 @@
 #include "menu_func.h"
 
+static void load_section_map_fromfile(char* filename, elf_head_t* elf_head, elf_head_t* elf_second, int* sect_freespacevals, size_t* inject_array_size_out, inject_transfer_t*** inject_array_out);
 
 void menu_main(elf_head_t* elf_head) {
 
@@ -284,14 +285,6 @@ void menu_inject(elf_head_t* elf_head) {
 	inject_transfer_t* inject_temp;
 	size_t inject_array_size;
 
-	map_item** sectionmap_list;
-	size_t sectionmap_count;
-	char* sectionmap_destsect;
-	char* sectionmap_sourcesect;
-	bool sectionmap_vertfound;
-	int sectionmap_indexdest;
-	int sectionmap_indexsrc;
-
 	int* sect_freespacevals;
 
 	/*#######*/
@@ -317,100 +310,26 @@ void menu_inject(elf_head_t* elf_head) {
 	menumisc_promptsect(elf_second, MENUSTRING_INJECT_S2_SHOWSECA);
 	menumisc_promptsect(elf_head, MENUSTRING_INJECT_S4_SHOWSECB);
 
-
-	inject_array_size = 0;
-	inject_array = malloc(sizeof(inject_array));
-	if (inject_array == NULL)
-		return terminate_error(ELIST_NOMEM);
-
 	if (menumisc_display_ynsimple(MENUSTRING_INJECT_S2A_USEMAP)) {
 
 		operation_s = menumisc_getfilename(MENUSTRING_INJECT_S3A_READMAP);
 		if (eset)
 			return;
 
-		sectionmap_list = NULL;
-		map_load(&sectionmap_list, operation_s);
+		load_section_map_fromfile(operation_s, elf_head, elf_second, sect_freespacevals, &inject_array_size, &inject_array);
+		if (eset)
+			return;
+
 		free(operation_s);
 
-		sectionmap_count = map_getcount(sectionmap_list);
-		for (i = 0; i < sectionmap_count; ++i) {
-
-			sectionmap_destsect = sectionmap_list[i]->map_name;
-			sectionmap_sourcesect = sectionmap_list[i]->map_name;
-
-			// names are parsed as the following: dest_sect_name|source_sect_name
-
-			for (sectionmap_vertfound = false; !sectionmap_vertfound; sectionmap_sourcesect++) {
-				if (*sectionmap_sourcesect == '\0') {
-					// end of string reached without finding vertbar
-					return terminate_error_str(ELIST_FILEMAPSECT_NODEST, sectionmap_list[i]->map_name);
-				}
-				else if (*sectionmap_sourcesect == '|') {
-					*sectionmap_sourcesect = '\0';//destsect is correctly terminated
-					sectionmap_vertfound = true;
-				}
-			}
-
-			// get dest index
-			for (j = 0; j < elf_head->sectable_count; ++j) {
-				if (!strcmp(sectionmap_destsect, elf_head->sections[j]->section_name)) {
-					sectionmap_indexdest = elf_head->sections[j]->index;
-					break;
-				}
-			}
-			if (j >= elf_head->sectable_count) {
-				return terminate_error_str(ELIST_FILEMAPSECT_DESTSECTNOTFOUND, sectionmap_destsect);
-			}
-
-
-			if (!strcmp(sectionmap_sourcesect, MAPVALUE_FREESPACE_IDENTIFIER)) {
-				//freespace value defined.
-				sect_freespacevals[sectionmap_indexdest] = sectionmap_list[i]->map_value;
-				continue;
-			}
-
-			// get source index
-			for (j = 0; j < elf_second->sectable_count; ++j) {
-				if (!strcmp(sectionmap_sourcesect, elf_second->sections[j]->section_name)) {
-					sectionmap_indexsrc = elf_second->sections[j]->index;
-					break;
-				}
-			}
-			if (j >= elf_second->sectable_count) {
-				return terminate_error_str(ELIST_FILEMAPSECT_SRCSECTNOTFOUND, sectionmap_sourcesect);
-			}	
-
-			inject_temp = malloc(sizeof(inject_transfer_t));
-			if (inject_temp == NULL)
-				return terminate_error(ELIST_NOMEM);
-
-			inject_temp->sect_index_source = sectionmap_indexsrc;
-			inject_temp->sect_index_dest = sectionmap_indexdest;
-			inject_temp->dest_addr = menumisc_getdestaddr(inject_temp, sect_freespacevals, elf_second->sections[sectionmap_indexsrc]->sh_size, sectionmap_list[i]->map_value);
-
-			if (!(inject_temp->dest_addr >= elf_head->sections[sectionmap_indexdest]->sh_addr && inject_temp->dest_addr < (elf_head->sections[sectionmap_indexdest]->sh_addr + elf_head->sections[sectionmap_indexdest]->sh_size)))
-				return terminate_error_str(ELIST_FILEMAPSECT_SECTOUTSIDE, sectionmap_sourcesect);
-
-			inject_temp->dest_base = elf_head->sections[sectionmap_indexdest]->sh_addr;
-			
-			inject_temp->is_virtual = true;
-
-			inject_array_size++;
-			inject_array = realloc(inject_array, sizeof(inject_array)*(inject_array_size + 1));
-			if (inject_array == NULL)
-				return terminate_error(ELIST_NOMEM);
-			inject_array[inject_array_size - 1] = inject_temp;
-			inject_array[inject_array_size] = NULL;
-
-		}
-
-
-
-
-		free(sectionmap_list);
 	}
 	else {
+
+		inject_array_size = 0;
+		inject_array = malloc(sizeof(inject_array));
+		if (inject_array == NULL)
+			return terminate_error(ELIST_NOMEM);
+
 		do {
 			inject_temp = malloc(sizeof(inject_transfer_t));
 			if (inject_temp == NULL)
@@ -451,7 +370,160 @@ void menu_inject(elf_head_t* elf_head) {
 		elf_save(elf_head);
 
 	unload_elf(elf_second);
+}
 
+void operation_inject(elf_head_t* elf_head, char* second_elf_filename, char* section_map_filename) {
+
+	char* operation_s;
+	elf_head_t* elf_second;
+	//int sect_index_source;
+	//int sect_index_dest;
+	//int dest_addr;
+	int source_size;
+	size_t i;
+	size_t j;
+	int addr_dest;
+
+	inject_transfer_t** inject_array;
+	inject_transfer_t* inject_temp;
+	size_t inject_array_size;
+
+	int* sect_freespacevals;
+
+	/*#######*/
+
+	sect_freespacevals = malloc(sizeof(int)*elf_head->sectable_count);
+	memset(sect_freespacevals, -1, elf_head->sectable_count);//BASEADDR_SECTIONARRAY_INVALID
+
+	if (elf_head->map_list == NULL) {
+		return terminate_error(ELIST_INJECT_MAPFILEREQUIRED);
+	}
+
+	elf_second = load_elf(second_elf_filename);
+	if (eset)
+		return;
+
+	load_section_map_fromfile(section_map_filename, elf_head, elf_second, sect_freespacevals, &inject_array_size, &inject_array);
+	if (eset)
+		return;
+
+	elf_inject(elf_head, elf_second, inject_array);
+	for (i = 0; i < inject_array_size; ++i)
+		free(inject_array[i]);
+	free(inject_array);
+	free(sect_freespacevals);
+
+	if (!eset)
+		elf_save(elf_head);
+
+	unload_elf(elf_second);
+}
+
+static void load_section_map_fromfile(char* filename, elf_head_t* elf_head, elf_head_t* elf_second, int* sect_freespacevals, size_t* inject_array_size_out, inject_transfer_t*** inject_array_out) {
+
+	size_t i;
+	size_t j;
+
+	map_item** sectionmap_list;
+	size_t sectionmap_count;
+	char* sectionmap_destsect;
+	char* sectionmap_sourcesect;
+	bool sectionmap_vertfound;
+	int sectionmap_indexdest;
+	int sectionmap_indexsrc;
+
+	inject_transfer_t* inject_temp;
+	size_t inject_array_size;
+
+	inject_transfer_t** inject_array;
+
+	/*#######*/
+
+	inject_array_size = 0;
+	inject_array = malloc(sizeof(inject_array));
+	if (inject_array == NULL)
+		return terminate_error(ELIST_NOMEM);
+
+
+	sectionmap_list = NULL;
+	map_load(&sectionmap_list, filename);
+
+
+	sectionmap_count = map_getcount(sectionmap_list);
+	for (i = 0; i < sectionmap_count; ++i) {
+
+		sectionmap_destsect = sectionmap_list[i]->map_name;
+		sectionmap_sourcesect = sectionmap_list[i]->map_name;
+
+		// names are parsed as the following: dest_sect_name|source_sect_name
+
+		for (sectionmap_vertfound = false; !sectionmap_vertfound; sectionmap_sourcesect++) {
+			if (*sectionmap_sourcesect == '\0') {
+				// end of string reached without finding vertbar
+				return terminate_error_str(ELIST_FILEMAPSECT_NODEST, sectionmap_list[i]->map_name);
+			}
+			else if (*sectionmap_sourcesect == '|') {
+				*sectionmap_sourcesect = '\0';//destsect is correctly terminated
+				sectionmap_vertfound = true;
+			}
+		}
+
+		// get dest index
+		for (j = 0; j < elf_head->sectable_count; ++j) {
+			if (!strcmp(sectionmap_destsect, elf_head->sections[j]->section_name)) {
+				sectionmap_indexdest = elf_head->sections[j]->index;
+				break;
+			}
+		}
+		if (j >= elf_head->sectable_count) {
+			return terminate_error_str(ELIST_FILEMAPSECT_DESTSECTNOTFOUND, sectionmap_destsect);
+		}
+
+
+		if (!strcmp(sectionmap_sourcesect, MAPVALUE_FREESPACE_IDENTIFIER)) {
+			//freespace value defined.
+			sect_freespacevals[sectionmap_indexdest] = sectionmap_list[i]->map_value;
+			continue;
+		}
+
+		// get source index
+		for (j = 0; j < elf_second->sectable_count; ++j) {
+			if (!strcmp(sectionmap_sourcesect, elf_second->sections[j]->section_name)) {
+				sectionmap_indexsrc = elf_second->sections[j]->index;
+				break;
+			}
+		}
+		if (j >= elf_second->sectable_count) {
+			return terminate_error_str(ELIST_FILEMAPSECT_SRCSECTNOTFOUND, sectionmap_sourcesect);
+		}
+
+		inject_temp = malloc(sizeof(inject_transfer_t));
+		if (inject_temp == NULL)
+			return terminate_error(ELIST_NOMEM);
+
+		inject_temp->sect_index_source = sectionmap_indexsrc;
+		inject_temp->sect_index_dest = sectionmap_indexdest;
+		inject_temp->dest_addr = menumisc_getdestaddr(inject_temp, sect_freespacevals, elf_second->sections[sectionmap_indexsrc]->sh_size, sectionmap_list[i]->map_value);
+
+		if (!(inject_temp->dest_addr >= elf_head->sections[sectionmap_indexdest]->sh_addr && inject_temp->dest_addr < (elf_head->sections[sectionmap_indexdest]->sh_addr + elf_head->sections[sectionmap_indexdest]->sh_size)))
+			return terminate_error_str(ELIST_FILEMAPSECT_SECTOUTSIDE, sectionmap_sourcesect);
+
+		inject_temp->dest_base = elf_head->sections[sectionmap_indexdest]->sh_addr;
+
+		inject_temp->is_virtual = true;
+
+		inject_array_size++;
+		inject_array = realloc(inject_array, sizeof(inject_array)*(inject_array_size + 1));
+		if (inject_array == NULL)
+			return terminate_error(ELIST_NOMEM);
+		inject_array[inject_array_size - 1] = inject_temp;
+		inject_array[inject_array_size] = NULL;
+
+	}
+
+	free(sectionmap_list);
+	*inject_array_out = inject_array;
+	*inject_array_size_out = inject_array_size;
 }
 
 int menumisc_getdestaddr(inject_transfer_t* inject_details, int* sect_freespacevals, int increment_freespace_size, int fallback_destaddr) {

@@ -16,7 +16,7 @@ int main(int argc, char** argv)
 {
 
 	int arg_index;
-	struct headflags_s headflags = { .mapfile = NULL };
+	struct headflags_s headflags = { .menu_immediate_operation = MENUIMMOP_NONE,.mapfile = NULL };
 	char* filename = NULL;
 
 	elf_head_t* elf_main;
@@ -30,7 +30,7 @@ int main(int argc, char** argv)
 		//terminate_error(ELIST_NOARGUMENTS, true);
 	}
 	else {
-		for (arg_index = 1;arg_index < argc;++arg_index) {
+		for (arg_index = 1; arg_index < argc; ++arg_index) {
 			if (argv[arg_index][0] == '-') {
 				switch (argv[arg_index][1]) {
 				case MENUOP_MAP:
@@ -39,6 +39,22 @@ int main(int argc, char** argv)
 						exit(eset);
 					}
 					headflags.mapfile = argv[arg_index];
+					break;
+				case MENUOP_INJECT:
+					if (headflags.menu_immediate_operation != MENUIMMOP_NONE) {
+						terminate_error(ELIST_INIT_IMMEDIATEOPERATIONSPECIFIED);
+						exit(eset);
+					}
+
+					if (((++arg_index) + 1) >= argc) {
+						terminate_error(ELIST_INIT_INJECT_NOTENOUGHARGS);
+						exit(eset);
+					}
+
+					headflags.immediateop_params.inject.source_object_file = argv[arg_index++];
+					headflags.immediateop_params.inject.section_map_file = argv[arg_index];
+
+					headflags.menu_immediate_operation = MENUIMMOP_INJECT;
 					break;
 				default:
 					terminate_error(ELIST_BADARGUMENT);
@@ -71,7 +87,18 @@ int main(int argc, char** argv)
 				exit(eset);
 		}
 
-		menu_main(elf_main);
+		switch (headflags.menu_immediate_operation) {
+		case MENUIMMOP_INJECT:
+			operation_inject(elf_main, headflags.immediateop_params.inject.source_object_file, headflags.immediateop_params.inject.section_map_file);
+			if (eset)
+				exit(eset);
+			break;
+		default:
+			menu_main(elf_main);
+			break;
+		}
+
+
 	}
 
 	return 0;

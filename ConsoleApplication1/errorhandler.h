@@ -11,7 +11,7 @@ enum ERROR_LIST {
 	ELIST_EXIT,
 	ELIST_NOARGUMENTS,
 	ELIST_NOFILENAME,
-	ELIST_BADARGUMENT,
+	ELIST_BADARGUMENT,	
 	ELIST_LOAD_MAP_BADARGUMENT,
 	ELIST_FILEGIVEN,
 	ELIST_FILECANNOTOPEN,
@@ -41,7 +41,10 @@ enum ERROR_LIST {
 	ELIST_FILEMAPSECT_SECTOUTSIDE,
 	ELIST_FILEMAPSECT_NODEST,
 	ELIST_FILEMAPSECT_NOFREESP,
-	ELIST_RELOCMERGE_DESTSYMNOTFOUND
+	ELIST_RELOCMERGE_DESTSYMNOTFOUND,
+	ELIST_INIT_IMMEDIATEOPERATIONSPECIFIED,
+	ELIST_INIT_INJECT_NOTENOUGHARGS,
+	ELIST_INJECT_MAPFILEREQUIRED,
 };
 
 static const char* ERROR_LIST_STRINGS[] = {
@@ -79,7 +82,10 @@ static const char* ERROR_LIST_STRINGS[] = {
 	[ELIST_FILEMAPSECT_SECTOUTSIDE] = "Section destination address was outside the bounds of the destination section:",
 	[ELIST_FILEMAPSECT_NODEST] = "No destination section specified in map name. Formatting must resemble this (destsect|sourcesect):",
 	[ELIST_FILEMAPSECT_NOFREESP] = "Freespace not defined.",
-	[ELIST_RELOCMERGE_DESTSYMNOTFOUND]="Could not find appropriate symbol table to use for new relocation entry."
+	[ELIST_RELOCMERGE_DESTSYMNOTFOUND]="Could not find appropriate symbol table to use for new relocation entry.",
+	[ELIST_INIT_IMMEDIATEOPERATIONSPECIFIED]="Only one command-line operation can be given at a time.",
+	[ELIST_INIT_INJECT_NOTENOUGHARGS]="Not enough args for inject operation. Example: -i \"source_object_file.o\" \"section_map_file.txt\"",
+	[ELIST_INJECT_MAPFILEREQUIRED]="A symbol map file is required for the injection operation."
 };
 
 void* terminate_error(enum ERROR_LIST error);

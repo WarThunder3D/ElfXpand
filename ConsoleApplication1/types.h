@@ -8,6 +8,15 @@ typedef uint8_t byte;
 struct headflags_s {
 	char* mapfile;
 	int read;
+	int menu_immediate_operation; //MENU_IMMEDIATEOPERATION
+
+	union {
+		struct {
+			char* source_object_file;
+			char* section_map_file;
+		} inject;
+	} immediateop_params;
+	
 };
 
 //NOTE: unload_elf should be updated to free memory for allocated members
@@ -79,6 +88,10 @@ enum COMPILER_USE {
 	CUSE_GCC
 };
 
+enum MENU_IMMEDIATEOPERATION {
+	MENUIMMOP_NONE,
+	MENUIMMOP_INJECT,
+};
 
 
 #endif

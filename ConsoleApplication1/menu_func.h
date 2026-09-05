@@ -69,6 +69,8 @@ void menu_inject(elf_head_t* elf_head);
 void menu_patch(elf_head_t* elf_head);
 void menu_map(elf_head_t* elf_head);
 
+void operation_inject(elf_head_t* elf_head, char* second_elf_filename, char* section_map_filename);
+
 char* menumisc_getfilename(char* custom_message);
 void menumisc_promptsect(elf_head_t* elf_head, char* custom_message);
 void menumisc_printsectsize(elf_sechead_t* section);
